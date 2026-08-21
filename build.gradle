@@ -144,7 +144,6 @@ def applyMetadata(spec, String packageVersion) {
     def sample = codes.contains('ORDERS') ? 'ORDERS' : codes.first()
     new File(dir, 'README.md').text = render(readmeTemplate, [
             'directory.upper'    : spec.directory.toUpperCase(),
-            'package.display'    : config.displayName.replace("EDIFACT ${spec.directory.toUpperCase()} ", ''),
             'package.domain'     : spec.domain,
             'package.org'        : packageOrg,
             'package.name'       : name,
@@ -216,6 +215,7 @@ tasks.register('validateSchemas') {
 
 def generateTasks = []
 def packTasks = []
+def pushTasks = []
 
 packageDirs().each { spec ->
     def suffix = spec.directory.capitalize() + spec.domain.capitalize()
@@ -252,7 +252,7 @@ packageDirs().each { spec ->
     }
     packTasks << pack
 
-    tasks.register("push${suffix}", Exec) {
+    pushTasks << tasks.register("push${suffix}", Exec) {
         group = 'publishing'
         description = "Pushes the ${packageName(spec)} library to Ballerina Central."
         dependsOn pack
@@ -275,10 +275,16 @@ tasks.named('check') {
     dependsOn 'validateSchemas'
 }
 
+// A published version cannot be replaced, so every package is packed before any
+// is pushed. Otherwise a package that fails to compile aborts the release
+// half-published, leaving versions on Central that can only be superseded.
+pushTasks.each { push -> push.configure { mustRunAfter tasks.named('assemble') } }
+
 tasks.register('publishToCentral') {
     group = 'publishing'
-    description = "Pushes every EDIFACT library to Ballerina Central."
-    dependsOn tasks.matching { it.name.startsWith('push') }
+    description = "Packs every EDIFACT library, then pushes them all to Ballerina Central."
+    dependsOn tasks.named('assemble')
+    dependsOn pushTasks
 }
 
 // Regenerates the committed schemas from a downloaded UNECE release archive.

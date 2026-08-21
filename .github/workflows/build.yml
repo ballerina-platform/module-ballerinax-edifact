@@ -4,9 +4,29 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'd03a/**'
+      - 'build-config/**'
+      - 'metadata/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - '.github/workflows/build.yml'
   pull_request:
     branches:
       - main
+    paths:
+      - 'd03a/**'
+      - 'build-config/**'
+      - 'metadata/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 jobs:
@@ -31,6 +51,6 @@ jobs:
           version: ${{ steps.versions.outputs.ballerina }}
 
       # Generates every library from its committed EDI schemas, packs them, and
-      # fails if the schemas were committed without being post-processed.
+      # checks the schemas are well formed and fully described.
       - name: Build
         run: ./gradlew build --no-daemon

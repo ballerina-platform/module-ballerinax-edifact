@@ -21,50 +21,34 @@ back out.
 | [`ballerinax/edifact.d03a.shipping`](https://central.ballerina.io/ballerinax/edifact.d03a.shipping) | 34 | Container announcement, release, gate-in/gate-out, discharge/loading and stuffing/stripping, bayplans, customs declarations and responses |
 | [`ballerinax/edifact.d03a.supplychain`](https://central.ballerina.io/ballerinax/edifact.d03a.supplychain) | 29 | Purchase orders and responses, delivery schedules and just-in-time calls, despatch and receiving advices, inventory reports, documentary credit |
 
-Each message is a separate submodule, so a program only pulls in the records for
-the messages it actually handles. The records and schemas are generated from the
-UN/EDIFACT D03A directory with the
-[Ballerina EDI tool](https://central.ballerina.io/ballerina/edi) and are
-envelope-aware: an interchange is parsed from `UNB` through `UNZ`, including the
-`UNH`/`UNT` message header and trailer.
+### Key Features
 
-## Quick start
+- Typed records for all 192 D03A messages, each in its own submodule, so a
+  program only pulls in the records for the messages it handles.
+- Envelope-aware parsing and serialization: an interchange is read from `UNB`
+  through `UNZ`, including the `UNH`/`UNT` message header and trailer.
+- Round-trips in both directions — EDI text to records, and records back to
+  conformant EDI text with the `UNT` segment count recomputed.
+- Generated from the UN/EDIFACT D03A directory with the
+  [Ballerina EDI tool](https://central.ballerina.io/ballerina/edi), so the
+  records follow the published specification.
 
-To use a library in your Ballerina application, import the package and the
-submodules for the messages you handle.
+## Usage
 
-### Step 1: Import the library
+Each package documents its own quick start, message list and API on Ballerina
+Central — follow the package link in the table above. Add the one for your
+domain to `Ballerina.toml` and import the submodules for the messages you
+handle:
 
 ```ballerina
-import ballerina/io;
 import ballerinax/edifact.d03a.supplychain;
 import ballerinax/edifact.d03a.supplychain.mORDERS;
 ```
 
-### Step 2: Read an EDI message
-
-Convert an EDIFACT interchange into a Ballerina record:
-
-```ballerina
-public function main() returns error? {
-    string ediText = check io:fileReadString("orders.edi");
-    mORDERS:EDI_ORDERS_ORDERS message =
-        check supplychain:fromEdiString(ediText, supplychain:EDI_ORDERS).ensureType();
-    io:println(message);
-}
-```
-
-### Step 3: Write an EDI message
-
-Convert a Ballerina record back into an EDIFACT interchange:
-
-```ballerina
-string ediText = check supplychain:toEdiString(message, supplychain:EDI_ORDERS);
-```
-
-`supplychain:getEDINames()` returns every message name the package supports.
-`interchangeFromEdiString` and `interchangeToEdiString` give access to the full
-`UNB`/`UNZ` interchange, and `headersFromEdiString` reads just the headers.
+Every package exposes the same API: `fromEdiString` and `toEdiString` for a
+message body, `interchangeFromEdiString` and `interchangeToEdiString` for a full
+`UNB`/`UNZ` interchange, `headersFromEdiString` for the headers alone, and
+`getEDINames` for the messages it supports.
 
 ## Build from the source
 
