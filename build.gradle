@@ -145,6 +145,7 @@ def applyMetadata(spec, String packageVersion) {
     new File(dir, 'README.md').text = render(readmeTemplate, [
             'directory.upper'    : spec.directory.toUpperCase(),
             'package.domain'     : spec.domain,
+            'package.display.name': config.displayName,
             'package.org'        : packageOrg,
             'package.name'       : name,
             'package.overview'   : config.overview,
