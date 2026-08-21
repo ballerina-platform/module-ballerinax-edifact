@@ -3,7 +3,6 @@
     "displayName": "EDIFACT D03A Finance",
     "overview": "payment orders and multiple payment orders, credit and debit advices, direct debits, financial statements and balances, banking status, balance-of-payments reporting, invoicing, VAT and tax control, and insurance premium payment.",
     "keywords": [
-      "finance",
       "payments",
       "banking"
     ]
@@ -12,7 +11,6 @@
     "displayName": "EDIFACT D03A Logistics",
     "overview": "forwarding and multimodal transport instructions, bookings and status reports, freight cost and rate information, dangerous goods notifications, cargo handling and movement, vessel call and tank status, passenger lists, and worker registration and insurance history.",
     "keywords": [
-      "logistics",
       "transport",
       "freight"
     ]
@@ -21,7 +19,6 @@
     "displayName": "EDIFACT D03A Manufacturing",
     "overview": "product service and project task planning, quality and safety/hazard data, utilities master data and time series, metered services consumption, repair calls, in-transit reports, and accounting entries and statements of account.",
     "keywords": [
-      "manufacturing",
       "utilities",
       "quality"
     ]
@@ -30,7 +27,6 @@
     "displayName": "EDIFACT D03A Retail",
     "overview": "product data, exchange reconciliation and inquiries, requests for quote and for document, pricing history, returns announcements and instructions, reservations, generic and statistical messages, and insurance policy administration and reinsurance messages.",
     "keywords": [
-      "retail",
       "product",
       "reinsurance"
     ]
@@ -40,7 +36,6 @@
     "overview": "insurance premiums, claims assessment and inspections, job orders and applications, payroll deductions, medical prescriptions, reports and resource usage, life reinsurance, berth management and stowage instructions, sales reports and forecasts, and social administration and work grants.",
     "keywords": [
       "insurance",
-      "employment",
       "healthcare"
     ]
   },
@@ -48,7 +43,6 @@
     "displayName": "EDIFACT D03A Shipping",
     "overview": "container announcement, release, gate-in/gate-out, discharge/loading and stuffing/stripping messages, bayplan and stowage plans, equipment stock and special handling orders, customs declarations, cargo reports and responses, and contract tendering and valuation messages.",
     "keywords": [
-      "shipping",
       "container",
       "customs"
     ]
@@ -58,7 +52,6 @@
     "overview": "purchase orders, changes and responses, delivery schedules and just-in-time calls, despatch and receiving advices, inventory and order status reports, party information, documentary credit messages, cargo insurance claims, and superannuation messages.",
     "keywords": [
       "supply chain",
-      "orders",
       "procurement"
     ]
   }
