@@ -13,56 +13,70 @@ on:
         type: string
         description: Enter the release version
         required: true
+        default: "1.0.0"
       org:
         type: string
         description: Enter the organization name
         required: true
+        default: "ballerinax"
 
 jobs:
   publish-release:
     runs-on: ubuntu-latest
+    env:
+      BALLERINA_VERSION: 2201.13.3
+      EDI_TOOL_VERSION: 2.2.0
+      DIRECTORIES: d03a
     steps:
-      - uses: actions/checkout@v2
-      - uses: ballerina-platform/setup-ballerina@v1
-        name: Install Ballerina
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          version: 2201.7.0
-      - name: Pull EDI Tool
-        run: bal tool pull edi
-      - name: Generate Ballerina Source code
+          python-version: "3.12"
+
+      - name: Install Ballerina
+        uses: ballerina-platform/setup-ballerina@v1
+        with:
+          version: ${{ env.BALLERINA_VERSION }}
+
+      - name: Pull EDI tool
+        run: bal tool pull edi:${{ env.EDI_TOOL_VERSION }}
+
+      - name: Generate Ballerina library packages
         run: |
-          current_path="$PWD"
-          versions=("d03a")
-          for version in "${versions[@]}"; do
-            packages=$(find $version -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-            for package in $packages; do
-              echo "Generating package : edifact.$version.$package"
-              bal edi libgen -O ${{ inputs.org }} -n "edifact.$version.$package" -s "$version/$package" -o "target"
+          for version in $DIRECTORIES; do
+            for path in "$version"/*/; do
+              package=$(basename "$path")
+              echo "::group::libgen edifact.$version.$package"
+              bal edi libgen \
+                -p "${{ inputs.org }}/edifact.$version.$package" \
+                -i "$version/$package" \
+                -o target
+              python3 scripts/apply_package_metadata.py \
+                "target/edifact.$version.$package" \
+                "$package" \
+                "${{ inputs.release_version }}" \
+                "${{ inputs.org }}"
+              echo "::endgroup::"
             done
           done
-          tree target
-      - name: pack
+
+      - name: Pack
         run: |
-          sudo apt install tree
-          current_dir="$PWD"
-          packages=$(find target -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-          for package in $packages; do
-            echo "Running bal pack on : $package"
-            cd "$current_dir/target/$package"
-            sed -i "s/version = \"[^\"]*\"/version = \"${{ inputs.release_version }}\"/" "Ballerina.toml"
-            echo "ls modules"
-            tree modules
-            bal pack
+          for path in target/*/; do
+            package=$(basename "$path")
+            echo "::group::pack $package"
+            (cd "$path" && bal pack)
+            echo "::endgroup::"
           done
-      - name: push
+
+      - name: Push to Ballerina Central
         env:
           BALLERINA_CENTRAL_ACCESS_TOKEN: ${{ secrets.BALLERINA_CENTRAL_ACCESS_TOKEN }}
         run: |
-          current_dir="$PWD"
-          packages=$(find target -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
-          for package in $packages; do
-            echo "Pushing package $package to Ballerina Central"
-            cd "$current_dir/target/$package"
-            bal push
+          for path in target/*/; do
+            package=$(basename "$path")
+            echo "::group::push $package"
+            (cd "$path" && bal push)
+            echo "::endgroup::"
           done
-
