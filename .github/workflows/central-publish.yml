@@ -23,10 +23,6 @@ on:
 jobs:
   publish-release:
     runs-on: ubuntu-latest
-    env:
-      BALLERINA_VERSION: 2201.13.3
-      EDI_TOOL_VERSION: 2.2.0
-      DIRECTORIES: d03a
     steps:
       - uses: actions/checkout@v4
 
@@ -34,49 +30,25 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Read the pinned Ballerina version
+        id: versions
+        run: |
+          echo "ballerina=$(grep -oP '(?<=^ballerinaLangVersion=).*' gradle.properties)" >> "$GITHUB_OUTPUT"
+
       - name: Install Ballerina
         uses: ballerina-platform/setup-ballerina@v1
         with:
-          version: ${{ env.BALLERINA_VERSION }}
+          version: ${{ steps.versions.outputs.ballerina }}
 
-      - name: Pull EDI tool
-        run: bal tool pull edi:${{ env.EDI_TOOL_VERSION }}
-
-      - name: Generate Ballerina library packages
-        run: |
-          for version in $DIRECTORIES; do
-            for path in "$version"/*/; do
-              package=$(basename "$path")
-              echo "::group::libgen edifact.$version.$package"
-              bal edi libgen \
-                -p "${{ inputs.org }}/edifact.$version.$package" \
-                -i "$version/$package" \
-                -o target
-              python3 scripts/apply_package_metadata.py \
-                "target/edifact.$version.$package" \
-                "$package" \
-                "${{ inputs.release_version }}" \
-                "${{ inputs.org }}"
-              echo "::endgroup::"
-            done
-          done
-
-      - name: Pack
-        run: |
-          for path in target/*/; do
-            package=$(basename "$path")
-            echo "::group::pack $package"
-            (cd "$path" && bal pack)
-            echo "::endgroup::"
-          done
-
-      - name: Push to Ballerina Central
+      - name: Publish to Ballerina Central
         env:
           BALLERINA_CENTRAL_ACCESS_TOKEN: ${{ secrets.BALLERINA_CENTRAL_ACCESS_TOKEN }}
         run: |
-          for path in target/*/; do
-            package=$(basename "$path")
-            echo "::group::push $package"
-            (cd "$path" && bal push)
-            echo "::endgroup::"
-          done
+          ./gradlew publishToCentral --no-daemon \
+            -Pversion=${{ inputs.release_version }} \
+            -PpackageOrg=${{ inputs.org }}

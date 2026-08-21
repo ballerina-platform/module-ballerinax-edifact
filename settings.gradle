@@ -1,0 +1,8 @@
+/*
+ * The generated libraries are not Gradle subprojects: `bal edi libgen` creates a
+ * whole Ballerina package per directory/domain pair under `build`, so there is
+ * nothing to declare here ahead of the build. Package names come from the
+ * directories under `d03a` and from `metadata/packages.json`.
+ */
+
+rootProject.name = 'edifact'

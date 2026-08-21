@@ -1,0 +1,9 @@
+[package]
+org = "@package.org@"
+name = "@package.name@"
+version = "@package.version@"
+distribution = "@ballerina.lang.version@"
+authors = ["Ballerina"]
+keywords = [@package.keywords@]
+repository = "@package.repository@"
+license = ["Apache-2.0"]

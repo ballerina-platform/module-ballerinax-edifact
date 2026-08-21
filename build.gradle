@@ -1,0 +1,304 @@
+/*
+ * Copyright (c) 2026 WSO2 LLC. (http://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import groovy.json.JsonSlurper
+
+plugins {
+    id 'base'
+}
+
+// The EDI schemas under `<directory>/<domain>` are the only committed sources.
+// `bal edi libgen` turns each domain into a whole Ballerina package, so the
+// packages are discovered from the directory layout rather than declared as
+// Gradle subprojects.
+ext {
+    packagesConfig = new JsonSlurper().parse(file('metadata/packages.json'))
+    messageTitles = new JsonSlurper().parse(file('build-config/resources/message-titles.json'))
+    tomlTemplate = file('build-config/resources/Ballerina.toml')
+    readmeTemplate = file('build-config/resources/README.md')
+    directories = ediDirectories.split(',').collect { it.trim() }.findAll { it }
+    generatedDir = layout.buildDirectory.dir('packages').get().asFile
+}
+
+def packageDirs() {
+    def dirs = []
+    directories.each { directory ->
+        file(directory).listFiles()
+                .findAll { it.directory }
+                .sort { it.name }
+                .each { dirs << [directory: directory, domain: it.name, schemas: it] }
+    }
+    return dirs
+}
+
+def packageName(spec) {
+    return "edifact.${spec.directory}.${spec.domain}"
+}
+
+def packageDir(spec) {
+    return new File(generatedDir, packageName(spec))
+}
+
+def quotedList(values) {
+    return values.collect { "\"${it}\"" }.join(', ')
+}
+
+// Gradle 9 removed Project.exec() from task actions, and injecting ExecOperations
+// is not available to a script-level task, so external commands run through
+// ProcessBuilder. Returns the exit value and the combined output.
+def runCommand(List<String> args, Map options = [:]) {
+    def builder = new ProcessBuilder(args)
+    builder.directory((options.workingDir ?: projectDir) as File)
+    builder.redirectErrorStream(true)
+    def process = builder.start()
+    def output = new StringBuilder()
+    process.inputStream.eachLine { line ->
+        output.append(line).append('\n')
+        if (!options.quiet) {
+            logger.lifecycle(line)
+        }
+    }
+    int exitValue = process.waitFor()
+    if (exitValue != 0 && !options.ignoreExitValue) {
+        throw new GradleException(
+                "Command failed with exit code ${exitValue}: ${args.join(' ')}\n${output}")
+    }
+    return [exitValue: exitValue, output: output.toString()]
+}
+
+// Renders a `@token@` template. Same convention as the other Ballerina library
+// repositories, where build-config/resources holds the templates.
+def render(File template, Map tokens) {
+    def rendered = template.text
+    tokens.each { key, value -> rendered = rendered.replace("@${key}@", value.toString()) }
+    return rendered
+}
+
+// `libgen` writes a minimal Ballerina.toml and rewrites it on every run, so the
+// publishable metadata has to be re-applied after each generation rather than
+// committed next to the generated sources.
+def applyMetadata(spec, String packageVersion) {
+    def dir = packageDir(spec)
+    def config = packagesConfig.packages[spec.domain]
+    if (config == null) {
+        throw new GradleException("No metadata/packages.json entry for '${spec.domain}'")
+    }
+    def name = packageName(spec)
+    def generated = new File(dir, 'Ballerina.toml')
+    def existing = generated.text
+
+    def keywords = config.keywords + packagesConfig.common.keywords + ["Name/${config.displayName}"]
+    def toml = render(tomlTemplate, [
+            'package.org'           : packageOrg,
+            'package.name'          : name,
+            'package.version'       : packageVersion,
+            'ballerina.lang.version': ballerinaLangVersion,
+            'package.keywords'      : quotedList(keywords),
+            'package.repository'    : packagesConfig.common.repository
+    ])
+
+    // Keep the dependency block libgen resolved, and re-emit its deprecated
+    // `export` list as [[package.modules]] so `bal pack` does not warn.
+    def dependencyIndex = existing.indexOf('[[dependency]]')
+    if (dependencyIndex >= 0) {
+        toml += '\n' + existing.substring(dependencyIndex).trim() + '\n'
+    }
+    def exported = (existing =~ /(?m)^export\s*=\s*\[(.*)\]\s*$/)
+    if (exported.find()) {
+        exported.group(1).split(',')
+                .collect { it.trim().replaceAll('^"|"$', '') }
+                .findAll { it && it != name }
+                .each { toml += "\n[[package.modules]]\nname = \"${it}\"\nexport = true\n" }
+    }
+    generated.text = toml
+
+    def codes = new File(dir, 'modules').listFiles()
+            .findAll { it.directory && it.name.startsWith('m') }
+            .collect { it.name.substring(1) }
+            .sort()
+    if (codes.isEmpty()) {
+        throw new GradleException("No modules were generated under ${dir}")
+    }
+    codes.each {
+        if (!messageTitles.containsKey(it)) {
+            throw new GradleException("No message-titles.json entry for '${it}'")
+        }
+    }
+    def sample = codes.contains('ORDERS') ? 'ORDERS' : codes.first()
+    new File(dir, 'README.md').text = render(readmeTemplate, [
+            'directory.upper'    : spec.directory.toUpperCase(),
+            'package.display'    : config.displayName.replace("EDIFACT ${spec.directory.toUpperCase()} ", ''),
+            'package.domain'     : spec.domain,
+            'package.org'        : packageOrg,
+            'package.name'       : name,
+            'package.overview'   : config.overview,
+            'message.count'      : codes.size(),
+            'sample.message'     : sample,
+            'sample.message.lower': sample.toLowerCase(),
+            'message.table'      : codes.collect {
+                "| `${it}` | ${messageTitles[it]} | `${name}.m${it}` |"
+            }.join('\n')
+    ])
+
+    // rest_connector.bal declares `service ... on new http:Listener(9090)` in the
+    // package's default module. A module-level service in a library starts
+    // listening as soon as the package is imported, so importing one of these
+    // packages would open port 9090 and importing any two would fail with
+    // "Address already in use". A REST wrapper belongs in an application.
+    delete new File(dir, 'rest_connector.bal')
+    // libgen still emits the pre-2201.9 documentation files, and Ballerina warns
+    // when they sit next to a README.md.
+    delete new File(dir, 'Package.md'), new File(dir, 'Module.md')
+}
+
+tasks.register('pullEdiTool') {
+    description = "Pulls the EDI tool version pinned in gradle.properties."
+    doLast {
+        // Already-pulled is not a failure.
+        runCommand(['bal', 'tool', 'pull', "edi:${ediToolVersion}".toString()],
+                [ignoreExitValue: true])
+    }
+}
+
+tasks.register('validateSchemas') {
+    group = 'verification'
+    description = "Fails if the committed schemas are not post-processed."
+    doLast {
+        runCommand(['python3', 'scripts/postprocess_schemas.py'] + directories)
+        def changed = runCommand(
+                ['git', 'status', '--porcelain', '--'] + directories, [quiet: true]).output
+        if (changed.trim()) {
+            throw new GradleException(
+                    "Committed schemas are not post-processed. Run " +
+                    "'python3 scripts/postprocess_schemas.py ${directories.join(' ')}' " +
+                    "and commit the result:\n${changed}")
+        }
+    }
+}
+
+def generateTasks = []
+def packTasks = []
+
+packageDirs().each { spec ->
+    def suffix = spec.directory.capitalize() + spec.domain.capitalize()
+    def dir = packageDir(spec)
+
+    def generate = tasks.register("generate${suffix}") {
+        group = 'build'
+        description = "Generates the ${packageName(spec)} library from its EDI schemas."
+        dependsOn 'pullEdiTool'
+        inputs.dir spec.schemas
+        inputs.files tomlTemplate, readmeTemplate, file('metadata/packages.json'),
+                file('build-config/resources/message-titles.json')
+        inputs.property 'version', project.version.toString()
+        inputs.property 'langVersion', ballerinaLangVersion
+        outputs.dir dir
+        doLast {
+            delete dir
+            generatedDir.mkdirs()
+            runCommand(['bal', 'edi', 'libgen',
+                        '-p', "${packageOrg}/${packageName(spec)}".toString(),
+                        '-i', spec.schemas.path,
+                        '-o', generatedDir.path])
+            applyMetadata(spec, project.version.toString())
+        }
+    }
+    generateTasks << generate
+
+    def pack = tasks.register("pack${suffix}", Exec) {
+        group = 'build'
+        description = "Packs the ${packageName(spec)} library."
+        dependsOn generate
+        workingDir dir
+        commandLine 'bal', 'pack'
+    }
+    packTasks << pack
+
+    tasks.register("push${suffix}", Exec) {
+        group = 'publishing'
+        description = "Pushes the ${packageName(spec)} library to Ballerina Central."
+        dependsOn pack
+        workingDir dir
+        commandLine 'bal', 'push'
+    }
+}
+
+tasks.register('generateLibraries') {
+    group = 'build'
+    description = "Generates every EDIFACT library from its EDI schemas."
+    dependsOn generateTasks
+}
+
+tasks.named('assemble') {
+    dependsOn packTasks
+}
+
+tasks.named('check') {
+    dependsOn 'validateSchemas'
+}
+
+tasks.register('publishToCentral') {
+    group = 'publishing'
+    description = "Pushes every EDIFACT library to Ballerina Central."
+    dependsOn tasks.matching { it.name.startsWith('push') }
+}
+
+// Regenerates the committed schemas from a downloaded UNECE release archive.
+// The archive is not redistributable and the UNECE site is behind a bot check,
+// so it has to be downloaded with a browser and passed in:
+//   ./gradlew regenSchemas -PediArchive=d03a.zip -PediDirectory=d03a
+tasks.register('regenSchemas') {
+    group = 'build'
+    description = "Regenerates the committed EDI schemas from a UNECE release archive."
+    doLast {
+        if (!project.hasProperty('ediArchive')) {
+            throw new GradleException("Pass -PediArchive=<path to the UNECE release archive>")
+        }
+        def directory = project.findProperty('ediDirectory') ?: directories.first()
+        def converted = layout.buildDirectory.dir("schemas/${directory}").get().asFile
+        delete converted
+        converted.mkdirs()
+        // The converter exits non-zero after writing every batch message because
+        // it also picks up the interactive message directory:
+        // https://github.com/ballerina-platform/ballerina-library/issues/9065
+        runCommand(['bal', 'edi', 'convertEdifactSchema',
+                    '-v', directory.toString(),
+                    '-i', project.property('ediArchive').toString(),
+                    '-o', converted.path], [ignoreExitValue: true])
+        // The grouping of messages into domains is a curation decision recorded
+        // by the directory layout, so each message is copied over the package
+        // that already owns it rather than into a flat directory.
+        def owners = [:]
+        file(directory).listFiles().findAll { it.directory }.each { domain ->
+            domain.listFiles().findAll { it.name.endsWith('.json') }.each { owners[it.name] = it }
+        }
+        def unassigned = []
+        converted.listFiles().findAll { it.name.endsWith('.json') }.each {
+            def owner = owners[it.name]
+            if (owner == null) {
+                unassigned << it.name
+            } else {
+                owner.bytes = it.bytes
+            }
+        }
+        if (!unassigned.isEmpty()) {
+            logger.warn("Not assigned to any package, so not copied: ${unassigned.sort().join(', ')}")
+        }
+        runCommand(['python3', 'scripts/postprocess_schemas.py', directory.toString()])
+    }
+}

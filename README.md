@@ -70,26 +70,41 @@ string ediText = check supplychain:toEdiString(message, supplychain:EDI_ORDERS);
 
 ### Prerequisites
 
-1. [Ballerina Swan Lake](https://ballerina.io/downloads/) 2201.13.3 or later.
-2. The EDI tool:
+1. JDK 21 and Python 3.9 or later.
+2. [Ballerina Swan Lake](https://ballerina.io/downloads/). The version is pinned
+   as `ballerinaLangVersion` in [`gradle.properties`](gradle.properties) and is
+   what the packages declare as their `distribution`.
 
-   ```bash
-   bal tool pull edi:2.2.0
-   ```
+The EDI tool version is pinned as `ediToolVersion` in the same file and is
+pulled by the build.
 
-3. Python 3.9 or later, for the scripts under `scripts/`.
-
-### Generate and build a package
+### Build the libraries
 
 ```bash
-bal edi libgen -p ballerinax/edifact.d03a.supplychain -i d03a/supplychain -o target
-python3 scripts/apply_package_metadata.py target/edifact.d03a.supplychain supplychain 1.0.0
-cd target/edifact.d03a.supplychain && bal pack
+./gradlew build
 ```
 
-`apply_package_metadata.py` fills in the keywords, icon, licence, authors and
-repository from [`metadata/packages.json`](metadata/packages.json), which
-`bal edi libgen` does not emit and overwrites on every run.
+This generates every library from the committed EDI schemas into
+`build/packages`, packs each one, and fails if the committed schemas were not
+post-processed. No generated source is committed.
+
+Useful tasks:
+
+| Task | Description |
+| ---- | ----------- |
+| `./gradlew build` | Generate, pack and validate everything |
+| `./gradlew generateLibraries` | Generate all seven packages without packing |
+| `./gradlew packD03aFinance` | Generate and pack a single package |
+| `./gradlew validateSchemas` | Check the committed schemas are post-processed |
+| `./gradlew publishToCentral` | Push every package to Ballerina Central |
+| `./gradlew regenSchemas -PediArchive=d03a.zip` | Regenerate the committed schemas |
+
+Package metadata — keywords, licence, authors, repository — lives in
+[`metadata/packages.json`](metadata/packages.json), and the `Ballerina.toml` and
+`README.md` templates live under
+[`build-config/resources`](build-config/resources). `bal edi libgen` does not emit
+that metadata and overwrites `Ballerina.toml` on every run, so the build
+re-applies it after each generation.
 
 ## Regenerate the schemas
 
@@ -99,27 +114,25 @@ The schemas under `d03a/` are generated from the UN/EDIFACT D03A release archive
    [UN/EDIFACT directories download page](https://unece.org/trade/uncefact/unedifact/download).
    The site is behind a bot check, so the archive has to be fetched with a
    browser rather than `curl`.
-2. Convert it, then post-process and redistribute the output:
+2. Regenerate:
 
    ```bash
-   bal edi convertEdifactSchema -v d03a -i d03a.zip -o /tmp/d03a
-   # copy each message into the package directory that already owns it
-   for f in /tmp/d03a/*.json; do
-     cp "$f" "$(find d03a -name "$(basename "$f")")"
-   done
-   python3 scripts/postprocess_schemas.py d03a
+   ./gradlew regenSchemas -PediArchive=d03a.zip
    ```
 
-`postprocess_schemas.py` repairs three defects in the converter output that
-otherwise make the generated libraries fail to compile; see the script's
-docstring for the details. Run it after every regeneration — the build workflow
-fails if the committed schemas are not post-processed.
+The task converts the archive, copies each message over the package directory
+that already owns it — the domain grouping is a curation decision recorded by the
+directory layout — and then runs `scripts/postprocess_schemas.py`.
 
-The domain grouping is a curation decision recorded by the directory layout, so
-regenerated messages are copied over their existing location rather than into a
-flat directory. `convertEdifactSchema` exits non-zero after emitting all 192
-messages because it also tries to convert a bogus `RESRSP` entry; the 192 files
-it wrote before that are complete.
+That script repairs three defects in the converter output that otherwise make the
+generated libraries fail to compile; see its docstring and
+[ballerina-library#9065](https://github.com/ballerina-platform/ballerina-library/issues/9065)
+for the details. `./gradlew build` fails if the committed schemas are not
+post-processed.
+
+`convertEdifactSchema` exits non-zero after emitting all 192 messages because it
+also picks up the interactive message directory and fails on `RESRSP`; the 192
+files it wrote first are complete, and `regenSchemas` tolerates that exit code.
 
 ## Contribute to Ballerina
 

@@ -10,77 +10,31 @@ on:
   workflow_dispatch:
 
 jobs:
-  schemas:
-    name: Validate schemas
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Check schemas are post-processed
-        run: |
-          python3 scripts/postprocess_schemas.py d03a
-          if ! git diff --quiet -- d03a; then
-            echo "::error::Committed schemas are not post-processed. Run"\
-                 "'python3 scripts/postprocess_schemas.py d03a' and commit the result."
-            git --no-pager diff --stat -- d03a
-            exit 1
-          fi
-
-      - name: Check every message is assigned to exactly one package
-        run: |
-          duplicates=$(find d03a -name '*.json' -printf '%f\n' | sort | uniq -d)
-          if [ -n "$duplicates" ]; then
-            echo "::error::Message assigned to more than one package: $duplicates"
-            exit 1
-          fi
-          echo "$(find d03a -name '*.json' | wc -l) schemas, no duplicates"
-
   build:
-    name: Build ${{ matrix.package }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - finance
-          - logistics
-          - manufacturing
-          - retail
-          - services
-          - shipping
-          - supplychain
-    env:
-      BALLERINA_VERSION: 2201.13.3
-      EDI_TOOL_VERSION: 2.2.0
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Read the pinned Ballerina version
+        id: versions
+        run: |
+          echo "ballerina=$(grep -oP '(?<=^ballerinaLangVersion=).*' gradle.properties)" >> "$GITHUB_OUTPUT"
 
       - name: Install Ballerina
         uses: ballerina-platform/setup-ballerina@v1
         with:
-          version: ${{ env.BALLERINA_VERSION }}
+          version: ${{ steps.versions.outputs.ballerina }}
 
-      - name: Pull EDI tool
-        run: bal tool pull edi:${{ env.EDI_TOOL_VERSION }}
-
-      - name: Generate library package
-        run: |
-          bal edi libgen \
-            -p "ballerinax/edifact.d03a.${{ matrix.package }}" \
-            -i "d03a/${{ matrix.package }}" \
-            -o target
-          python3 scripts/apply_package_metadata.py \
-            "target/edifact.d03a.${{ matrix.package }}" \
-            "${{ matrix.package }}" \
-            "0.0.0"
-
-      - name: Pack
-        run: cd "target/edifact.d03a.${{ matrix.package }}" && bal pack
+      # Generates every library from its committed EDI schemas, packs them, and
+      # fails if the schemas were committed without being post-processed.
+      - name: Build
+        run: ./gradlew build --no-daemon
