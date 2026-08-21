@@ -1,11 +1,11 @@
 ## Overview
 
+UN/@package.display.name@ group EDI parser: reads and writes the @message.count@ messages covering @package.overview@
+
 [UN/EDIFACT](https://unece.org/trade/uncefact/introducing-unedifact) is the
 United Nations standard for electronic data interchange, used to exchange
 business documents such as orders, invoices and despatch advices between trading
 partners.
-
-This package provides Ballerina record types and parser functions for the @message.count@ UN/EDIFACT @directory.upper@ messages grouped under **@package.domain@**: @package.overview@
 
 ### Key Features
 
