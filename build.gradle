@@ -94,7 +94,7 @@ def render(File template, Map tokens) {
 // committed next to the generated sources.
 def applyMetadata(spec, String packageVersion) {
     def dir = packageDir(spec)
-    def config = packagesConfig.packages[spec.domain]
+    def config = packagesConfig[spec.domain]
     if (config == null) {
         throw new GradleException("No metadata/packages.json entry for '${spec.domain}'")
     }
@@ -102,14 +102,16 @@ def applyMetadata(spec, String packageVersion) {
     def generated = new File(dir, 'Ballerina.toml')
     def existing = generated.text
 
-    def keywords = config.keywords + packagesConfig.common.keywords + ["Name/${config.displayName}"]
+    // Only the per-package keywords are interpolated; the ones shared by every
+    // package, and the repository, are literals in the template.
     def toml = render(tomlTemplate, [
             'package.org'           : packageOrg,
             'package.name'          : name,
             'package.version'       : packageVersion,
             'ballerina.lang.version': ballerinaLangVersion,
-            'package.keywords'      : quotedList(keywords),
-            'package.repository'    : packagesConfig.common.repository
+            'directory.upper'       : spec.directory.toUpperCase(),
+            'package.display.name'  : config.displayName,
+            'package.keywords'      : quotedList(config.keywords)
     ])
 
     // Keep the dependency block libgen resolved, and re-emit its deprecated
@@ -177,17 +179,38 @@ tasks.register('pullEdiTool') {
 
 tasks.register('validateSchemas') {
     group = 'verification'
-    description = "Fails if the committed schemas are not post-processed."
+    description = "Checks the committed EDI schemas are well formed and fully described."
     doLast {
-        runCommand(['python3', 'scripts/postprocess_schemas.py'] + directories)
-        def changed = runCommand(
-                ['git', 'status', '--porcelain', '--'] + directories, [quiet: true]).output
-        if (changed.trim()) {
-            throw new GradleException(
-                    "Committed schemas are not post-processed. Run " +
-                    "'python3 scripts/postprocess_schemas.py ${directories.join(' ')}' " +
-                    "and commit the result:\n${changed}")
+        def owners = [:]
+        def problems = []
+        packageDirs().each { spec ->
+            def schemas = spec.schemas.listFiles().findAll { it.name.endsWith('.json') }
+            if (schemas.isEmpty()) {
+                problems << "${spec.directory}/${spec.domain} holds no schemas"
+            }
+            schemas.each { schema ->
+                def code = schema.name - '.json'
+                // A message must belong to exactly one package: libgen turns each
+                // schema into a module, so two packages claiming one message would
+                // publish the same records twice.
+                if (owners.containsKey(schema.name)) {
+                    problems << "${schema.name} is claimed by both ${owners[schema.name]} and ${spec.domain}"
+                }
+                owners[schema.name] = spec.domain
+                if (!messageTitles.containsKey(code)) {
+                    problems << "${code} has no build-config/resources/message-titles.json entry"
+                }
+                try {
+                    new JsonSlurper().parse(schema)
+                } catch (Exception e) {
+                    problems << "${schema.name} is not valid JSON: ${e.message}"
+                }
+            }
         }
+        if (!problems.isEmpty()) {
+            throw new GradleException("Invalid EDI schemas:\n  " + problems.join('\n  '))
+        }
+        logger.lifecycle("${owners.size()} schemas across ${packageDirs().size()} packages")
     }
 }
 
@@ -273,13 +296,10 @@ tasks.register('regenSchemas') {
         def converted = layout.buildDirectory.dir("schemas/${directory}").get().asFile
         delete converted
         converted.mkdirs()
-        // The converter exits non-zero after writing every batch message because
-        // it also picks up the interactive message directory:
-        // https://github.com/ballerina-platform/ballerina-library/issues/9065
         runCommand(['bal', 'edi', 'convertEdifactSchema',
                     '-v', directory.toString(),
                     '-i', project.property('ediArchive').toString(),
-                    '-o', converted.path], [ignoreExitValue: true])
+                    '-o', converted.path])
         // The grouping of messages into domains is a curation decision recorded
         // by the directory layout, so each message is copied over the package
         // that already owns it rather than into a flat directory.
@@ -299,6 +319,5 @@ tasks.register('regenSchemas') {
         if (!unassigned.isEmpty()) {
             logger.warn("Not assigned to any package, so not copied: ${unassigned.sort().join(', ')}")
         }
-        runCommand(['python3', 'scripts/postprocess_schemas.py', directory.toString()])
     }
 }

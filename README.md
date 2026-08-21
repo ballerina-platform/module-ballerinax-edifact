@@ -70,7 +70,7 @@ string ediText = check supplychain:toEdiString(message, supplychain:EDI_ORDERS);
 
 ### Prerequisites
 
-1. JDK 21 and Python 3.9 or later.
+1. JDK 21.
 2. [Ballerina Swan Lake](https://ballerina.io/downloads/). The version is pinned
    as `ballerinaLangVersion` in [`gradle.properties`](gradle.properties) and is
    what the packages declare as their `distribution`.
@@ -85,8 +85,8 @@ pulled by the build.
 ```
 
 This generates every library from the committed EDI schemas into
-`build/packages`, packs each one, and fails if the committed schemas were not
-post-processed. No generated source is committed.
+`build/packages`, packs each one, and checks that every schema is well formed and
+described. No generated source is committed.
 
 Useful tasks:
 
@@ -95,16 +95,17 @@ Useful tasks:
 | `./gradlew build` | Generate, pack and validate everything |
 | `./gradlew generateLibraries` | Generate all seven packages without packing |
 | `./gradlew packD03aFinance` | Generate and pack a single package |
-| `./gradlew validateSchemas` | Check the committed schemas are post-processed |
+| `./gradlew validateSchemas` | Check the committed schemas are well formed |
 | `./gradlew publishToCentral` | Push every package to Ballerina Central |
 | `./gradlew regenSchemas -PediArchive=d03a.zip` | Regenerate the committed schemas |
 
-Package metadata — keywords, licence, authors, repository — lives in
-[`metadata/packages.json`](metadata/packages.json), and the `Ballerina.toml` and
-`README.md` templates live under
-[`build-config/resources`](build-config/resources). `bal edi libgen` does not emit
-that metadata and overwrites `Ballerina.toml` on every run, so the build
-re-applies it after each generation.
+`bal edi libgen` does not emit the metadata Ballerina Central needs and
+overwrites `Ballerina.toml` on every run, so the build re-applies it after each
+generation. Everything shared by all seven packages — licence, authors,
+repository, the common keywords — is a literal in the
+[`Ballerina.toml` template](build-config/resources/Ballerina.toml); only what
+differs per package (display name, overview, domain keywords) lives in
+[`metadata/packages.json`](metadata/packages.json).
 
 ## Regenerate the schemas
 
@@ -120,19 +121,10 @@ The schemas under `d03a/` are generated from the UN/EDIFACT D03A release archive
    ./gradlew regenSchemas -PediArchive=d03a.zip
    ```
 
-The task converts the archive, copies each message over the package directory
+The task converts the archive and copies each message over the package directory
 that already owns it — the domain grouping is a curation decision recorded by the
-directory layout — and then runs `scripts/postprocess_schemas.py`.
-
-That script repairs three defects in the converter output that otherwise make the
-generated libraries fail to compile; see its docstring and
-[ballerina-library#9065](https://github.com/ballerina-platform/ballerina-library/issues/9065)
-for the details. `./gradlew build` fails if the committed schemas are not
-post-processed.
-
-`convertEdifactSchema` exits non-zero after emitting all 192 messages because it
-also picks up the interactive message directory and fails on `RESRSP`; the 192
-files it wrote first are complete, and `regenSchemas` tolerates that exit code.
+directory layout. Any converted message not already assigned to a package is
+reported rather than copied.
 
 ## Contribute to Ballerina
 

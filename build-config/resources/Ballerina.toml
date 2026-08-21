@@ -4,6 +4,18 @@ name = "@package.name@"
 version = "@package.version@"
 distribution = "@ballerina.lang.version@"
 authors = ["Ballerina"]
-keywords = [@package.keywords@]
-repository = "@package.repository@"
+keywords = [
+    @package.keywords@,
+    "EDI",
+    "EDIFACT",
+    "@directory.upper@",
+    "B2B",
+    "Business Management/ERP",
+    "Cost/Free",
+    "Vendor/Other",
+    "Area/ERP & Business Operations",
+    "Type/Library",
+    "Name/@package.display.name@"
+]
+repository = "https://github.com/ballerina-platform/edifact"
 license = ["Apache-2.0"]
