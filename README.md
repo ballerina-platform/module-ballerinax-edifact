@@ -91,14 +91,6 @@ repository, the common keywords — is a literal in the
 differs per package (display name, overview, domain keywords) lives in
 [`metadata/packages.json`](metadata/packages.json).
 
-Ballerina Central takes a package's listing summary from the first line of its
-README, cutting it at the first newline and keeping the Markdown as-is. The
-opening paragraph of the
-[README template](build-config/resources/README.md) is therefore one unwrapped
-line of plain text, and must stay that way — hard wrapping it truncates the
-summary mid-sentence, and starting it with a link leaves the link text as the
-whole summary.
-
 ## Regenerate the schemas
 
 The schemas under `d03a/` are generated from the UN/EDIFACT D03A release archive.
