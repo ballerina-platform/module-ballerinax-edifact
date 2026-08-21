@@ -1,6 +1,6 @@
 # Ballerina EDIFACT libraries
 
-[![Build](https://github.com/ballerina-platform/edifact/actions/workflows/build.yml/badge.svg)](https://github.com/ballerina-platform/edifact/actions/workflows/build.yml)
+[![Build](https://github.com/ballerina-platform/module-ballerinax-edifact/actions/workflows/build.yml/badge.svg)](https://github.com/ballerina-platform/module-ballerinax-edifact/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ## Overview
