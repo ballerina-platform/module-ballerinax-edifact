@@ -170,9 +170,11 @@ def applyMetadata(spec, String packageVersion) {
 tasks.register('pullEdiTool') {
     description = "Pulls the EDI tool version pinned in gradle.properties."
     doLast {
-        // Already-pulled is not a failure.
-        runCommand(['bal', 'tool', 'pull', "edi:${ediToolVersion}".toString()],
-                [ignoreExitValue: true])
+        // `bal tool pull` exits 0 when the version is already available, so any
+        // non-zero exit is a real failure and must stop the build here. Ignoring
+        // it surfaced an unauthorized Central token three tasks later as
+        // `unknown command 'edi'`, which points nowhere near the cause.
+        runCommand(['bal', 'tool', 'pull', "edi:${ediToolVersion}".toString()])
     }
 }
 
